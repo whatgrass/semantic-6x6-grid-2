@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>6x6 正確字/錯字 點擊實驗 (6 個錯字｜隨機錯字圖)</title>
+
+  <!-- jsPsych 6.3.1：可以直接 file:// 跑 -->
+  <script src="https://unpkg.com/jspsych@6.3.1/jspsych.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/jspsych@6.3.1/css/jspsych.css">
+
+  <!-- plugins -->
+  <script src="https://unpkg.com/jspsych@6.3.1/plugins/jspsych-html-button-response.js"></script>
+  <script src="https://unpkg.com/jspsych@6.3.1/plugins/jspsych-preload.js"></script>
+  <script src="https://unpkg.com/jspsych@6.3.1/plugins/jspsych-html-keyboard-response.js"></script>
+
+  <style>
+    body {
+      background: #f4f4f4;
+      font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system,
+                   BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .jspsych-content-wrapper {
+      max-width: 900px;
+    }
+
+    .trial-header {
+      font-size: 24px;
+      text-align: center;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+
+    .trial-progress {
+      font-size: 20px;
+      text-align: center;
+      margin-bottom: 4px;
+    }
+
+    .trial-instruction {
+      font-size: 22px;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+
+    /* ===== 真正的 6×6 格子（100×100） ===== */
+    .matrix {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr); /* 一排 6 格 */
+      grid-auto-rows: 1fr;
+      gap: 0;
+      margin: 0 auto;
+      width: 600px;   /* 6 × 100 */
+      height: 600px;  /* 6 × 100，正方形 */
+    }
+
+    .matrix-cell {
+      width: 100px;
+      height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .matrix-cell:active {
+      transform: scale(0.96);
+    }
+
+    .matrix-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+<div id="jspsych-target"></div>
+
+<script>
+  // =========================
+  // 1. 圖片設定
+  // =========================
+  var CORRECT_IMG = 'img/correct_char.png';   // 正確字那張
+  var WRONG_IMGS = [
+    'img/wrong_char_1.png',
+    'img/wrong_char_2.png',
+    'img/wrong_char_3.png',
+    'img/wrong_char_4.png',
+    'img/wrong_char_5.png'
+  ];
+
+  var N_WRONG_PER_TRIAL = 6;   // 每題 6 個錯字
+
+  // =========================
+  // 2. 建 timeline
+  // =========================
+  var timeline = [];
+
+  // (a) 預先載入圖片
+  var preload = {
+    type: 'preload',
+    images: [CORRECT_IMG].concat(WRONG_IMGS)
+  };
+  timeline.push(preload);
+
+  // (b) 指導語
+  var instructions = {
+    type: 'html-button-response',
+    stimulus:
+      '<h2 style="text-align:center; font-size:24px;">實驗說明</h2>' +
+      '<p style="text-align:center; font-size:18px;">畫面中會出現一個 <strong>6 × 6 的中文字格子</strong>。</p>' +
+      '<p style="text-align:center; font-size:18px;">其中 <strong>30 個是正確寫法</strong>，有 <strong>6 個是錯字</strong>。</p>' +
+      '<p style="text-align:center; font-size:18px;">請用滑鼠<strong>依序點選你覺得是「錯字」的格子</strong>，</p>' +
+      '<p style="text-align:center; font-size:18px;">必須找到 <strong>6 個錯字</strong> 才會進入下一題。</p>' +
+      '<p style="text-align:center; font-size:18px;">點錯正字、或重複點同一格都會被記錄下來，請盡量又快又準。</p>',
+    choices: ['開始']
+  };
+  timeline.push(instructions);
+
+  // (c) 題目列表（100 題）
+  var N_TRIALS = 30;
+
+  var trial_variables = [];
+  for (var i = 0; i < N_TRIALS; i++) {
+    trial_variables.push({
+      trial_number: i + 1
+    });
+  }
+
+  // 用來暫存當前 trial 的資訊
+  var currentGridInfo = null;
+
+  // (d) 單一題：用 html-keyboard-response + 自己畫 6×6 + click
+  var grid_trial = {
+    type: 'html-keyboard-response',
+    stimulus: '',
+    choices: jsPsych.NO_KEYS,  // 不用鍵盤，改用滑鼠點
+
+    on_start: function(trial) {
+      var tnum = jsPsych.timelineVariable('trial_number', true);
+
+      // 決定 6 個錯字位置 0~35（不重複）
+      var all_positions = [];
+      for (var i = 0; i < 36; i++) { all_positions.push(i); }
+      var wrong_positions = jsPsych.randomization
+                              .sampleWithoutReplacement(all_positions, N_WRONG_PER_TRIAL);
+
+      // 每個錯字位置，各自隨機抽一張錯字圖（可重複）
+      var wrong_imgs_for_positions = [];
+      for (var k = 0; k < N_WRONG_PER_TRIAL; k++) {
+        var img_choice = WRONG_IMGS[Math.floor(Math.random() * WRONG_IMGS.length)];
+        wrong_imgs_for_positions.push(img_choice);
+      }
+
+      // 做出 6×6 HTML
+      var html = '';
+      html += '<div class="trial-header">第 <strong>' + tnum +
+              '</strong> 題 / 共 ' + N_TRIALS + ' 題</div>';
+      html += '<div class="trial-progress" id="found-counter">' +
+              '已找到 0 / ' + N_WRONG_PER_TRIAL + ' 個錯字</div>';
+      html += '<div class="trial-instruction">請點選你覺得是「錯字」的格子（必須找到 6 個才能下一題）</div>';
+      html += '<div class="matrix">';
+
+      for (var j = 0; j < 36; j++) {
+        var pos_idx = wrong_positions.indexOf(j);
+        var is_wrong = pos_idx !== -1;
+        var img_src = is_wrong ? wrong_imgs_for_positions[pos_idx] : CORRECT_IMG;
+
+        html += '<div class="matrix-cell" data-idx="' + j + '">';
+        html +=   '<img src="' + img_src + '" class="matrix-img">';
+        html += '</div>';
+      }
+      html += '</div>';
+
+      trial.stimulus = html;
+
+      currentGridInfo = {
+        trial_number: tnum,
+        wrong_positions: wrong_positions,              // [6 個錯字 index]
+        wrong_imgs_for_positions: wrong_imgs_for_positions // 與上面對應
+      };
+    },
+
+    on_load: function() {
+      var start_time = performance.now();
+      var cells = document.querySelectorAll('.matrix-cell');
+      var info = currentGridInfo || {};
+      var wrong_positions = info.wrong_positions || [];
+      var wrong_imgs_for_positions = info.wrong_imgs_for_positions || [];
+
+      var found_wrong = new Set();       // 已經正確找到的錯字位置
+      var click_log = [];                // 每一次點擊紀錄
+      var trial_finished = false;
+
+      var counter_el = document.getElementById('found-counter');
+      function updateCounter() {
+        if (counter_el) {
+          counter_el.textContent =
+            '已找到 ' + found_wrong.size + ' / ' + N_WRONG_PER_TRIAL + ' 個錯字';
+        }
+      }
+
+      updateCounter();
+
+      cells.forEach(function(cell) {
+        cell.addEventListener('click', function() {
+          if (trial_finished) return;
+
+          var idx = parseInt(this.getAttribute('data-idx'), 10);
+          var now = performance.now();
+          var rt_from_start = Math.round(now - start_time);
+
+          var pos_idx = wrong_positions.indexOf(idx);
+          var is_wrong = pos_idx !== -1;
+          var is_new_wrong = is_wrong && !found_wrong.has(idx);
+
+          // 判斷這一格的圖片是什麼
+          var clicked_img = is_wrong
+            ? wrong_imgs_for_positions[pos_idx]
+            : CORRECT_IMG;
+
+          // 記錄這次點擊
+          click_log.push({
+            index: idx,
+            is_wrong: is_wrong,
+            clicked_img: clicked_img,
+            rt: rt_from_start
+          });
+
+          // 如果是新的錯字位置 → 圖片消失 + 更新 counter
+          if (is_new_wrong) {
+            found_wrong.add(idx);
+            this.innerHTML = ''; // 清空這格（圖片消失）
+            updateCounter();
+          }
+
+          // 找滿 6 個錯字才結束這題
+          if (found_wrong.size === N_WRONG_PER_TRIAL) {
+            trial_finished = true;
+
+            var n_clicks_total   = click_log.length;
+            var n_clicks_wrong   = click_log.filter(function(c){ return c.is_wrong; }).length;
+            var n_clicks_correct = click_log.filter(function(c){ return !c.is_wrong; }).length;
+
+            var rt_first = click_log.length > 0 ? click_log[0].rt : null;
+            var rt_last  = rt_from_start;  // 第 6 個錯字的時間
+
+            var clicked_any_correct = n_clicks_correct > 0;
+
+            jsPsych.finishTrial({
+              task: 'grid_6x6',
+              correct_img: CORRECT_IMG,
+
+              // 6 個錯字的位置與圖片
+              wrong_positions: wrong_positions.slice(),
+              wrong_imgs_for_positions: wrong_imgs_for_positions.slice(),
+
+              trial_number: info.trial_number,
+
+              // 點擊相關紀錄
+              click_log: click_log,              // 每一次點到哪格、是否錯字、哪張圖、時間
+              n_clicks_total: n_clicks_total,
+              n_clicks_wrong: n_clicks_wrong,    // 點到錯字的次數（含重複）
+              n_clicks_correct: n_clicks_correct,// 點到正字的次數
+              clicked_any_correct: clicked_any_correct, // 有沒有點到任何正確字 (true/false)
+              rt_first_click: rt_first,          // 第一點時間
+              rt_last_correct6: rt_last,         // 找到第 6 個錯字的時間
+
+              // 這題是否「完全沒點到正確字」
+              correct: !clicked_any_correct
+            });
+          }
+        });
+      });
+    }
+  };
+
+  var grid_procedure = {
+    timeline: [grid_trial],
+    timeline_variables: trial_variables,
+    randomize_order: false   // 題號照順序
+  };
+  timeline.push(grid_procedure);
+
+  // (e) 結束畫面 + 自動下載 CSV
+  var end_screen = {
+    type: 'html-button-response',
+    stimulus: function() {
+      var trials = jsPsych.data.get().filter({task: 'grid_6x6'});
+      var n_total   = trials.count();
+      var n_perfect = trials.filter({correct: true}).count(); // 完全沒點正字
+      var acc       = n_total > 0 ? (n_perfect / n_total * 100).toFixed(1) : 0;
+
+      return (
+        '<h2 style="text-align:center;">實驗結束，辛苦了！</h2>' +
+        '<p style="text-align:center;">總題數：' + n_total + '</p>' +
+        '<p style="text-align:center;">「完全沒點到正確字」的題數：' + n_perfect + '</p>' +
+        '<p style="text-align:center;">此定義下的正確率：' + acc + '%</p>' +
+        '<p style="text-align:center; font-size:14px; color:#555;">（詳細點擊紀錄請看匯出的 CSV：含 clicked_any_correct / n_clicks_correct 等欄位）</p>'
+      );
+    },
+    choices: ['關閉'],
+    on_start: function() {
+      jsPsych.data.get().localSave('csv', 'grid6x6_6wrong_random_data.csv');
+    }
+  };
+  timeline.push(end_screen);
+
+  // =========================
+  // 3. 初始化 jsPsych
+  // =========================
+  jsPsych.init({
+    display_element: 'jspsych-target',
+    timeline: timeline
+  });
+</script>
+</body>
+</html>
